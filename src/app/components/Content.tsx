@@ -73,11 +73,12 @@ export default function Content() {
           </Button>
         )}
         {resourceInfo.map((info, i) => {
+          const previewUrl = info.directUrl ?? info.sourceUrl ?? info.url
           if (info.type === 'Image') {
             return (
               <div key={info.url}>
                 <Image
-                  src={info.url}
+                  src={previewUrl}
                   width={info.width || 1080}
                   height={info.height || 1080}
                   className="object-contain w-full h-[400px]"
@@ -97,12 +98,12 @@ export default function Content() {
                   muted
                   loop={true}
                 >
-                  <source src={info.url} type="video/mp4" />
+                  <source src={previewUrl} type="video/mp4" />
                 </video>
                 <Save
                   filename={info.filename}
                   href={info.url}
-                  fallbackHref={info.proxyUrl}
+                  fallbackHref={info.directUrl ?? info.sourceUrl}
                 />
               </div>
             )

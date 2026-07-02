@@ -35,10 +35,11 @@ function toDownloadableResources(
 
     return {
       ...resource,
+      directUrl: resource.url,
       sourceUrl: resource.url,
       proxyUrl: mediaUrl.toString(),
       expiresAt: getInstagramCdnExpiry(resource.url),
-      url: resource.url
+      url: mediaUrl.toString()
     }
   })
 }
