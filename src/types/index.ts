@@ -163,7 +163,9 @@ export type ResourceInfo = {
   width: number
   height: number
   url: string
+  proxyUrl?: string
   sourceUrl?: string
+  expiresAt?: string
   type: ResourceType
 }
 

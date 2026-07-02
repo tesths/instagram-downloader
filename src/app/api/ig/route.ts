@@ -6,6 +6,7 @@ import { POST_URL_PARAMS } from '@/lib/constant'
 import { ResourceInfo } from '@/types'
 
 const IG_API_TIMEOUT_MS = 18000
+const MEDIA_URL_PARAMS = 'url'
 const FILENAME_PARAMS = 'filename'
 const INDEX_PARAMS = 'index'
 
@@ -27,6 +28,7 @@ function toDownloadableResources(
 ): ResourceInfo[] {
   return resources.map((resource, index) => {
     const mediaUrl = new URL('/api/media', origin)
+    mediaUrl.searchParams.set(MEDIA_URL_PARAMS, resource.url)
     mediaUrl.searchParams.set(POST_URL_PARAMS, postUrl)
     mediaUrl.searchParams.set(INDEX_PARAMS, String(index))
     mediaUrl.searchParams.set(FILENAME_PARAMS, resource.filename)
@@ -34,9 +36,25 @@ function toDownloadableResources(
     return {
       ...resource,
       sourceUrl: resource.url,
-      url: mediaUrl.toString()
+      proxyUrl: mediaUrl.toString(),
+      expiresAt: getInstagramCdnExpiry(resource.url),
+      url: resource.url
     }
   })
+}
+
+function getInstagramCdnExpiry(value: string): string | undefined {
+  try {
+    const expiry = new URL(value).searchParams.get('oe')
+    if (!expiry || !/^[a-f0-9]+$/i.test(expiry)) return undefined
+
+    const timestamp = Number.parseInt(expiry, 16)
+    if (!Number.isSafeInteger(timestamp) || timestamp <= 0) return undefined
+
+    return new Date(timestamp * 1000).toISOString()
+  } catch {
+    return undefined
+  }
 }
 
 export async function GET(req: NextRequest) {

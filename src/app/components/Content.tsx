@@ -2,41 +2,27 @@
 import IgForm from '@/app/components/IgForm'
 import { useState, useEffect } from 'react'
 import { ResourceInfo } from '@/types'
-import { downloadVideo } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { ExternalLink, Loader2 } from 'lucide-react'
+import { ExternalLink } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import Image from 'next/image'
 
-function Save(props: { href: string }) {
-  const [isLoading, setIsLoading] = useState(false)
-  const { toast } = useToast()
-  const download = async () => {
-    try {
-      setIsLoading(true)
-      await downloadVideo(props.href, `instagram-${new Date().toLocaleString('en-US')}`)
-    } catch (error) {
-      console.error(error)
-      toast({
-        title: 'Error',
-        description: 'An Error occurred while downloading',
-        duration: 1500
-      })
-    } finally { 
-      setIsLoading(false)
-    }
-  }
+function Save(props: { filename: string; href: string; fallbackHref?: string }) {
   return (
-    <Button
-      variant="outline"
-      className='mt-2'
-      size="sm"
-      onClick={download}
-      disabled={isLoading}
-    >
-      {isLoading && <Loader2 className="animate-spin" />}
-      Click To Save
-    </Button>
+    <div className="mt-2 flex gap-2">
+      <Button variant="outline" size="sm" asChild>
+        <a href={props.href} download={props.filename} rel="noreferrer">
+          Click To Save
+        </a>
+      </Button>
+      {props.fallbackHref && (
+        <Button variant="ghost" size="sm" asChild>
+          <a href={props.fallbackHref} download={props.filename} rel="noreferrer">
+            Proxy fallback
+          </a>
+        </Button>
+      )}
+    </div>
   )
 }
 
@@ -113,7 +99,11 @@ export default function Content() {
                 >
                   <source src={info.url} type="video/mp4" />
                 </video>
-                <Save href={info.url} />
+                <Save
+                  filename={info.filename}
+                  href={info.url}
+                  fallbackHref={info.proxyUrl}
+                />
               </div>
             )
           }

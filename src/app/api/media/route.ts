@@ -74,6 +74,21 @@ async function resolveMediaResource(req: NextRequest): Promise<ResourceInfo | nu
   return resources[index] ?? null
 }
 
+function shouldRefreshMediaUrl(status: number): boolean {
+  return status === 401 || status === 403 || status === 404 || status === 410
+}
+
+async function fetchMedia(
+  req: NextRequest,
+  mediaUrl: string,
+  signal: AbortSignal
+): Promise<Response> {
+  return fetch(mediaUrl, {
+    headers: buildDownloadHeaders(req),
+    signal
+  })
+}
+
 function buildDownloadHeaders(req: NextRequest): Headers {
   const headers = new Headers({
     'User-Agent':
@@ -128,23 +143,40 @@ export async function GET(req: NextRequest) {
   const timeout = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS)
 
   try {
-    const resource = await resolveMediaResource(req)
-    const mediaUrl = resource?.url ?? req.nextUrl.searchParams.get(MEDIA_URL_PARAMS)
+    const initialMediaUrl = req.nextUrl.searchParams.get(MEDIA_URL_PARAMS)
+    let mediaUrl = initialMediaUrl
+    let resource: ResourceInfo | null = null
 
     if (!isAllowedMediaUrl(mediaUrl)) {
-      return NextResponse.json(
-        { message: 'Not a valid Instagram media URL.' },
-        { status: 400, headers: { 'Cache-Control': 'no-store, max-age=0' } }
-      )
+      resource = await resolveMediaResource(req)
+      mediaUrl = resource?.url ?? null
+
+      if (!isAllowedMediaUrl(mediaUrl)) {
+        return NextResponse.json(
+          { message: 'Not a valid Instagram media URL.' },
+          { status: 400, headers: { 'Cache-Control': 'no-store, max-age=0' } }
+        )
+      }
     }
 
     const filename = sanitizeFilename(
       resource?.filename ?? req.nextUrl.searchParams.get(FILENAME_PARAMS)
     )
-    const upstream = await fetch(mediaUrl, {
-      headers: buildDownloadHeaders(req),
-      signal: controller.signal
-    })
+    let upstream = await fetchMedia(req, mediaUrl, controller.signal)
+
+    if (
+      shouldRefreshMediaUrl(upstream.status) &&
+      req.nextUrl.searchParams.has(POST_URL_PARAMS) &&
+      req.nextUrl.searchParams.has(INDEX_PARAMS)
+    ) {
+      await upstream.body?.cancel()
+      resource = await resolveMediaResource(req)
+
+      if (resource?.url && resource.url !== mediaUrl && isAllowedMediaUrl(resource.url)) {
+        mediaUrl = resource.url
+        upstream = await fetchMedia(req, mediaUrl, controller.signal)
+      }
+    }
 
     if (!upstream.ok && upstream.status !== 206) {
       return NextResponse.json(
