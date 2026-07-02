@@ -2,7 +2,7 @@
 
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import axios, { AxiosError } from 'axios'
 import { ResourceInfo } from '@/types'
 import { Loader2 } from 'lucide-react'
@@ -23,22 +23,13 @@ export default function IgForm({
   const router = useRouter()
   const { toast } = useToast()
 
-  useEffect(() => {
-    const url = searchParams.get(POST_URL_PARAMS)
-    if (url) {
-      const decoded = decodeURIComponent(url)
-      setPostUrl(decoded)
-      getIgInfo(decoded)
-    }
-  }, [])
-
-  const updateSearchParams = (url: string) => {
+  const updateSearchParams = useCallback((url: string) => {
     const newSearchParams = new URLSearchParams(searchParams.toString())
     newSearchParams.set(POST_URL_PARAMS, encodeURIComponent(url))
     router.push(`${pathname}?${newSearchParams.toString()}`)
-  }
+  }, [pathname, router, searchParams])
 
-  const getIgInfo = async (url: string = postUrl) => {
+  const getIgInfo = useCallback(async (url: string) => {
     try {
       setLoading(true)
       if (!isValidIgUrl(url)) {
@@ -51,7 +42,8 @@ export default function IgForm({
       }
       const res = await axios({
         url: `/api/ig?${POST_URL_PARAMS}=${encodeURIComponent(url)}`,
-        method: 'get'
+        method: 'get',
+        timeout: 20000
       })
       if (res.status !== 200) {
         toast({
@@ -69,13 +61,29 @@ export default function IgForm({
         title: 'Error',
         description:
           ((e as AxiosError)?.response?.data as any)?.message ??
-          (e as AxiosError).message,
+          ((e as AxiosError).code === 'ECONNABORTED'
+            ? 'Instagram request timed out. Please try again.'
+            : (e as AxiosError).message),
         duration: 1500
       })
     } finally {
       setLoading(false)
     }
-  }
+  }, [onGetData, toast, updateSearchParams])
+
+  const initialLoadRef = useRef(false)
+
+  useEffect(() => {
+    if (initialLoadRef.current) return
+    initialLoadRef.current = true
+
+    const url = searchParams.get(POST_URL_PARAMS)
+    if (url) {
+      const decoded = decodeURIComponent(url)
+      setPostUrl(decoded)
+      getIgInfo(decoded)
+    }
+  }, [getIgInfo, searchParams])
 
   const onClear = () => {
     setPostUrl('')
@@ -105,9 +113,9 @@ export default function IgForm({
         {postUrl && <Button variant="outline" onClick={onClear}>Clear</Button>}
         {!postUrl && <Button variant="outline" onClick={onPaste}>Paste</Button>}
       </div>
-      <Button className="mt-4" onClick={() => getIgInfo()} disabled={loading} variant="outline">
-        {loading && <Loader2 className="animate-spin" />}
-        Download
+      <Button className="mt-4" onClick={() => getIgInfo(postUrl)} disabled={loading} variant="outline">
+        {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+        {loading ? 'Fetching...' : 'Download'}
       </Button>
     </>
   )

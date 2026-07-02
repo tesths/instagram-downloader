@@ -2,10 +2,11 @@
 import IgForm from '@/app/components/IgForm'
 import { useState, useEffect } from 'react'
 import { ResourceInfo } from '@/types'
-import { toCorsUrl, downloadVideo } from '@/lib/utils'
+import { downloadVideo } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { ExternalLink, Loader2 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
+import Image from 'next/image'
 
 function Save(props: { href: string }) {
   const [isLoading, setIsLoading] = useState(false)
@@ -41,14 +42,16 @@ function Save(props: { href: string }) {
 
 export default function Content() {
   useEffect(() => {
-    if('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').then(registration => {
-        console.log('Service worker registered:', registration.scope)
-      }).catch(err => {
-        console.error('Service worker registration failed:', err)
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then((registrations) => {
+        registrations.forEach((registration) => {
+          registration.unregister()
+        })
+      }).catch((err) => {
+        console.error('Service worker cleanup failed:', err)
       })
     }
-  })
+  }, [])
 
   const [resourceInfo, setResourceInfo] = useState<ResourceInfo[]>([])
   const { toast } = useToast()
@@ -87,11 +90,13 @@ export default function Content() {
           if (info.type === 'Image') {
             return (
               <div key={info.url}>
-                <img
-                  key={i}
-                  src={toCorsUrl(info.url)}
+                <Image
+                  src={info.url}
+                  width={info.width || 1080}
+                  height={info.height || 1080}
                   className="object-contain w-full h-[400px]"
-                  alt=""
+                  alt={`Instagram image ${i + 1}`}
+                  unoptimized
                 />
               </div>
             )

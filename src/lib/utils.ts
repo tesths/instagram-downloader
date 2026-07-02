@@ -29,7 +29,7 @@ export function toCorsUrl(url: string): string {
   return encodeURI(t)
 }
 
-export function parseIgShortcode(url: string): string {
+export function parseIgMediaType(url: string): 'p' | 'reel' | 'tv' {
   const parsedUrl = new URL(url)
   const hostname = parsedUrl.hostname.toLowerCase()
 
@@ -42,14 +42,22 @@ export function parseIgShortcode(url: string): string {
   }
 
   const [mediaType, shortcode] = parsedUrl.pathname.split('/').filter(Boolean)
+  const normalizedMediaType = mediaType === 'reels' ? 'reel' : mediaType
 
   if (
-    !['p', 'reel', 'reels', 'tv'].includes(mediaType) ||
+    !['p', 'reel', 'tv'].includes(normalizedMediaType) ||
     !/^[a-zA-Z0-9_-]+$/.test(shortcode ?? '')
   ) {
     throw new Error('No Shortcode Found in Url!')
   }
 
+  return normalizedMediaType as 'p' | 'reel' | 'tv'
+}
+
+export function parseIgShortcode(url: string): string {
+  parseIgMediaType(url)
+  const parsedUrl = new URL(url)
+  const [, shortcode] = parsedUrl.pathname.split('/').filter(Boolean)
   return shortcode
 }
 

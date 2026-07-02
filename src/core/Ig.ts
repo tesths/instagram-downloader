@@ -1,7 +1,7 @@
 import axios from 'axios'
 import { InstagramV1MediaItem, MediaData, ResourceInfo } from '@/types'
 import dayjs from 'dayjs'
-import { parseIgShortcode } from '../lib/utils'
+import { parseIgMediaType, parseIgShortcode } from '../lib/utils'
 
 const BROWSER_HEADERS = {
   'User-Agent':
@@ -30,15 +30,18 @@ const GRAPHQL_HEADERS = {
 }
 
 const DOC_IDS = ['10015901848480474', '8844121580391128', '8844121580391129']
+const INSTAGRAM_REQUEST_TIMEOUT = 5000
 
 type ApiMediaPayload = Record<string, any>
 
 export default class Ig {
   public shortcode: string | null = null
+  private mediaType: 'p' | 'reel' | 'tv' = 'p'
 
   constructor(url?: string) {
     if (url) {
       this.shortcode = this.parseShortcodeFromUrl(url)
+      this.mediaType = parseIgMediaType(url)
     }
   }
 
@@ -78,14 +81,7 @@ export default class Ig {
   }
 
   private async fetchViaEmbed(): Promise<MediaData | InstagramV1MediaItem> {
-    const paths = [
-      `/p/${this.shortcode}/embed/captioned/`,
-      `/p/${this.shortcode}/embed/`,
-      `/reel/${this.shortcode}/embed/captioned/`,
-      `/reel/${this.shortcode}/embed/`,
-      `/tv/${this.shortcode}/embed/captioned/`,
-      `/tv/${this.shortcode}/embed/`
-    ]
+    const paths = this.getEmbedPaths()
     const errors: string[] = []
 
     for (const path of paths) {
@@ -97,7 +93,7 @@ export default class Ig {
               'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
             Referer: 'https://www.instagram.com/'
           },
-          timeout: 15000
+          timeout: INSTAGRAM_REQUEST_TIMEOUT
         })
         if (res.status !== 200 || typeof res.data !== 'string') {
           throw new Error(`Embed endpoint failed for ${path}`)
@@ -123,7 +119,7 @@ export default class Ig {
           'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'
       },
       maxRedirects: 0,
-      timeout: 15000,
+      timeout: INSTAGRAM_REQUEST_TIMEOUT,
       validateStatus: (status) => status >= 200 && status < 400
     })
 
@@ -245,9 +241,12 @@ export default class Ig {
         'X-IG-App-ID': '1217981644879628',
         'X-Requested-With': 'XMLHttpRequest'
       },
-      timeout: 15000
+      timeout: INSTAGRAM_REQUEST_TIMEOUT
     })
     if (res.status !== 200) throw new Error('A1 endpoint failed')
+    if (!this.isJsonPayload(res.data)) {
+      throw new Error('A1 endpoint returned non-JSON response')
+    }
     const media = this.extractMediaFromApiPayload(res.data)
     if (media) return media
     throw new Error('No media data in A1 response')
@@ -309,10 +308,10 @@ export default class Ig {
             'X-FB-LSD': tokens.lsdToken
           },
           data: new URLSearchParams(requestData).toString(),
-          timeout: 15000
+          timeout: INSTAGRAM_REQUEST_TIMEOUT
         })
 
-        if (res.status === 200) {
+        if (res.status === 200 && this.isJsonPayload(res.data)) {
           const media = this.extractMediaFromApiPayload(res.data)
           if (media) return media
         }
@@ -338,6 +337,8 @@ export default class Ig {
   private extractMediaFromApiPayload(
     payload: ApiMediaPayload
   ): MediaData | InstagramV1MediaItem | null {
+    if (!this.isJsonPayload(payload)) return null
+
     return (
       payload?.xdt_shortcode_media ||
       payload?.graphql?.shortcode_media ||
@@ -348,6 +349,18 @@ export default class Ig {
       payload?.items?.[0] ||
       null
     )
+  }
+
+  private isJsonPayload(payload: unknown): payload is ApiMediaPayload {
+    return payload !== null && typeof payload === 'object' && !Array.isArray(payload)
+  }
+
+  private getEmbedPaths(): string[] {
+    const pathType = this.mediaType === 'tv' ? 'tv' : this.mediaType === 'reel' ? 'reel' : 'p'
+    return [
+      `/${pathType}/${this.shortcode}/embed/captioned/`,
+      `/${pathType}/${this.shortcode}/embed/`
+    ]
   }
 
   private extractMediaFromEmbedHtml(

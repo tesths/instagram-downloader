@@ -2304,6 +2304,79 @@ test('getData skips strategy results without usable http URLs', async () => {
       type: 'Image'
     })
   ])
-  expect(axios.get).toHaveBeenCalledTimes(7)
+  expect(axios.get).toHaveBeenCalledTimes(3)
   expect(axios).toHaveBeenCalledTimes(1)
+})
+
+test('getData skips Instagram endpoints that return non-JSON pages', async () => {
+  const graphqlItem: InstagramV1MediaItem = {
+    id: 'good-graphql',
+    media_type: 1,
+    image_versions2: {
+      candidates: [
+        {
+          url: 'https://cdn.example.com/graphql-image-large.jpg',
+          width: 1080,
+          height: 1350
+        }
+      ]
+    }
+  }
+
+  vi.mocked(axios.get)
+    .mockResolvedValueOnce({
+      status: 200,
+      data: '<html>No shortcode_media here</html>'
+    })
+    .mockResolvedValueOnce({
+      status: 200,
+      data: '<html>No shortcode_media here</html>'
+    })
+    .mockResolvedValueOnce({
+      status: 200,
+      data: '<html>No shortcode_media here</html>'
+    })
+    .mockResolvedValueOnce({
+      status: 200,
+      data: '<html>No shortcode_media here</html>'
+    })
+    .mockResolvedValueOnce({
+      status: 200,
+      data: '<html>No shortcode_media here</html>'
+    })
+    .mockResolvedValueOnce({
+      status: 200,
+      data: '<html>No shortcode_media here</html>'
+    })
+    .mockResolvedValueOnce({
+      status: 200,
+      data: 'The page could not be loaded'
+    })
+
+  vi.mocked(axios).mockResolvedValueOnce({
+    status: 200,
+    data: 'The page could not be loaded'
+  }).mockResolvedValueOnce({
+    status: 200,
+    data: {
+      data: {
+        xdt_api__v1__media__shortcode__web_info: {
+          items: [graphqlItem]
+        }
+      }
+    }
+  })
+
+  const res = await new Ig('https://www.instagram.com/p/DaQElsdj4_8/').getData()
+
+  expect(res).toEqual([
+    expect.objectContaining({
+      width: 1080,
+      height: 1350,
+      url: 'https://cdn.example.com/graphql-image-large.jpg',
+      type: 'Image'
+    })
+  ])
+  expect(axios.get).toHaveBeenCalledTimes(3)
+  expect(axios).toHaveBeenCalledTimes(2)
 })

@@ -1,36 +1,16 @@
-const installEvent = () => {
-  self.addEventListener('install', () => {
-    console.log('service worker installed')
-  })
-}
-installEvent()
+self.addEventListener('install', () => {
+  self.skipWaiting()
+})
 
-const activateEvent = () => {
-  self.addEventListener('activate', () => {
-    console.log('service worker activated')
-  })
-}
-activateEvent()
-
-const cacheName = 'v1'
-
-const cacheClone = async (e) => {
-  const res = await fetch(e.request)
-  const resClone = res.clone()
-
-  const cache = await caches.open(cacheName)
-  await cache.put(e.request, resClone)
-  return res
-}
-
-const fetchEvent = () => {
-  self.addEventListener('fetch', (e) => {
-    e.respondWith(
-      cacheClone(e)
-        .catch(() => caches.match(e.request))
-        .then((res) => res)
-    )
-  })
-}
-
-fetchEvent()
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches
+      .keys()
+      .then((keys) => Promise.all(keys.map((key) => caches.delete(key))))
+      .then(() => self.registration.unregister())
+      .then(() => self.clients.matchAll())
+      .then((clients) => {
+        clients.forEach((client) => client.navigate(client.url))
+      })
+  )
+})
