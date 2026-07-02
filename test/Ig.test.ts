@@ -2380,3 +2380,35 @@ test('getData skips Instagram endpoints that return non-JSON pages', async () =>
   expect(axios.get).toHaveBeenCalledTimes(3)
   expect(axios).toHaveBeenCalledTimes(2)
 })
+
+test('getData does not degrade carousel posts to the single /media image fallback', async () => {
+  vi.mocked(axios.get)
+    .mockResolvedValueOnce({
+      status: 200,
+      data: '<html>No shortcode_media here</html>'
+    })
+    .mockResolvedValueOnce({
+      status: 200,
+      data: '<html>No shortcode_media here</html>'
+    })
+    .mockResolvedValueOnce({
+      status: 200,
+      data: '<html>No shortcode_media here</html>'
+    })
+
+  vi.mocked(axios).mockResolvedValueOnce({
+    status: 200,
+    data: 'The page could not be loaded'
+  })
+
+  await expect(
+    new Ig('https://www.instagram.com/p/DaQElsdj4_8/').getData()
+  ).rejects.toThrow('All strategies failed')
+
+  expect(axios.get).toHaveBeenCalledTimes(3)
+  expect(axios.get).not.toHaveBeenCalledWith(
+    expect.stringContaining('/media/?size=l'),
+    expect.anything()
+  )
+  expect(axios).toHaveBeenCalledTimes(3)
+})

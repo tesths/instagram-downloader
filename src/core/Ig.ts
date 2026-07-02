@@ -55,12 +55,17 @@ export default class Ig {
 
     const errors: string[] = []
 
-    for (const strategy of [
+    const strategies = [
       this.fetchViaEmbed.bind(this),
       this.fetchViaA1Endpoint.bind(this),
-      this.fetchViaGraphQL.bind(this),
-      this.fetchViaMediaEndpoint.bind(this)
-    ]) {
+      this.fetchViaGraphQL.bind(this)
+    ]
+
+    if (this.mediaType !== 'p') {
+      strategies.push(this.fetchViaMediaEndpoint.bind(this))
+    }
+
+    for (const strategy of strategies) {
       try {
         const mediaData = await strategy()
         if (mediaData) {
