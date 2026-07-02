@@ -1,10 +1,50 @@
 import Ig from '../src/core/Ig'
-import { expect, test } from 'vitest'
-import { MediaData } from '@/types'
+import axios from 'axios'
+import { afterEach, expect, test, vi } from 'vitest'
+import { InstagramV1MediaItem, MediaData } from '@/types'
+import { isValidIgUrl, parseIgShortcode } from '../src/lib/utils'
+
+vi.mock('axios', () => {
+  const mockAxios = vi.fn()
+  return {
+    default: Object.assign(mockAxios, {
+      get: vi.fn()
+    })
+  }
+})
 
 const ig = new Ig(
   'https://www.instagram.com/p/DCMODa8TShB/?utm_source=ig_web_copy_link'
 )
+
+afterEach(() => {
+  vi.clearAllMocks()
+})
+
+test.each([
+  'https://www.instagram.com/p/DaQElsdj4_8?img_index=5&igsh=MWJkeGhrNDN6a2Nlbg==',
+  'https://www.instagram.com/p/DaQElsdj4_8/?img_index=5&igsh=MWJkeGhrNDN6a2Nlbg==',
+  'https://instagram.com/p/DaQElsdj4_8?img_index=5',
+  'https://m.instagram.com/p/DaQElsdj4_8?img_index=5',
+  'https://www.instagram.com/reel/DaQElsdj4_8?igsh=MWJkeGhrNDN6a2Nlbg==',
+  'https://www.instagram.com/reels/DaQElsdj4_8?igsh=MWJkeGhrNDN6a2Nlbg==',
+  'https://www.instagram.com/tv/DaQElsdj4_8?igsh=MWJkeGhrNDN6a2Nlbg=='
+])('validates supported Instagram URL: %s', (url) => {
+  expect(isValidIgUrl(url)).toBe(true)
+  expect(parseIgShortcode(url)).toBe('DaQElsdj4_8')
+  expect(new Ig(url).shortcode).toBe('DaQElsdj4_8')
+})
+
+test.each([
+  'https://example.com/p/DaQElsdj4_8',
+  'https://evilinstagram.com/p/DaQElsdj4_8',
+  'https://instagram.com.evil.com/p/DaQElsdj4_8',
+  'https://www.instagram.com/stories/DaQElsdj4_8',
+  'https://www.instagram.com/p/',
+  'not a url'
+])('rejects unsupported or non-Instagram URL: %s', (url) => {
+  expect(isValidIgUrl(url)).toBe(false)
+})
 
 test('Format Media Data to videoInfo', () => {
   const mediaData: MediaData = {
@@ -2086,10 +2126,184 @@ test('Format Media Data to videoInfo', () => {
     }
   }
   const res = ig.formatToResourceInfo(mediaData)
-  console.log('res', res)
-  expect(res).to.equal([
-    {
-      filename: '1'
-    }
+  expect(res).toHaveLength(10)
+  expect(res[0]).toMatchObject({
+    width: 750,
+    height: 937,
+    type: 'Video'
+  })
+  expect(res[0].url).toMatch(/^https:\/\//)
+  expect(res.slice(1).every((resource) => resource.type === 'Image')).toBe(true)
+  expect(res.every((resource) => /^https?:\/\//.test(resource.url))).toBe(true)
+  expect(new Set(res.map((resource) => resource.filename)).size).toBe(
+    res.length
+  )
+})
+
+test('formats Instagram v1 carousel media items', () => {
+  const mediaData: InstagramV1MediaItem = {
+    id: 'carousel-id',
+    code: 'DaQElsdj4_8',
+    media_type: 8,
+    carousel_media: [
+      {
+        id: 'image-id',
+        media_type: 1,
+        original_width: 720,
+        original_height: 900,
+        image_versions2: {
+          candidates: [
+            {
+              url: 'https://cdn.example.com/small.jpg',
+              width: 320,
+              height: 400
+            },
+            {
+              url: 'https://cdn.example.com/large.jpg',
+              width: 1080,
+              height: 1350
+            }
+          ]
+        }
+      },
+      {
+        id: 'video-id',
+        media_type: 2,
+        original_width: 640,
+        original_height: 800,
+        video_versions: [
+          {
+            url: 'https://cdn.example.com/video-low.mp4',
+            width: 360,
+            height: 450
+          },
+          {
+            url: 'https://cdn.example.com/video-high.mp4',
+            width: 720,
+            height: 900
+          }
+        ],
+        image_versions2: {
+          candidates: [
+            {
+              url: 'https://cdn.example.com/poster.jpg',
+              width: 720,
+              height: 900
+            }
+          ]
+        }
+      }
+    ]
+  }
+
+  expect(ig.formatToResourceInfo(mediaData)).toEqual([
+    expect.objectContaining({
+      filename: expect.stringContaining('image-id'),
+      width: 1080,
+      height: 1350,
+      url: 'https://cdn.example.com/large.jpg',
+      type: 'Image'
+    }),
+    expect.objectContaining({
+      filename: expect.stringContaining('video-id'),
+      width: 720,
+      height: 900,
+      url: 'https://cdn.example.com/video-high.mp4',
+      type: 'Video'
+    })
   ])
+})
+
+test('getData skips strategy results without usable http URLs', async () => {
+  const a1Item: InstagramV1MediaItem = {
+    id: 'bad-a1',
+    media_type: 2,
+    video_versions: [
+      {
+        url: '',
+        width: 720,
+        height: 900
+      }
+    ]
+  }
+  const graphqlItem: InstagramV1MediaItem = {
+    id: 'good-graphql',
+    media_type: 1,
+    image_versions2: {
+      candidates: [
+        {
+          url: 'https://cdn.example.com/graphql-image-small.jpg',
+          width: 320,
+          height: 400
+        },
+        {
+          url: 'https://cdn.example.com/graphql-image-large.jpg',
+          width: 1080,
+          height: 1350
+        }
+      ]
+    }
+  }
+
+  vi.mocked(axios.get)
+    .mockResolvedValueOnce({
+      status: 200,
+      data: '<html>No shortcode_media here</html>'
+    })
+    .mockResolvedValueOnce({
+      status: 200,
+      data: '<html>No shortcode_media here</html>'
+    })
+    .mockResolvedValueOnce({
+      status: 200,
+      data: '<html>No shortcode_media here</html>'
+    })
+    .mockResolvedValueOnce({
+      status: 200,
+      data: '<html>No shortcode_media here</html>'
+    })
+    .mockResolvedValueOnce({
+      status: 200,
+      data: '<html>No shortcode_media here</html>'
+    })
+    .mockResolvedValueOnce({
+      status: 200,
+      data: '<html>No shortcode_media here</html>'
+    })
+    .mockResolvedValueOnce({
+      status: 200,
+      data: { items: [a1Item] }
+    })
+    .mockResolvedValueOnce({
+      headers: {},
+      request: {
+        res: {
+          responseUrl: 'https://www.instagram.com/p/DaQElsdj4_8/media/?size=l'
+        }
+      }
+    })
+
+  vi.mocked(axios).mockResolvedValueOnce({
+      status: 200,
+      data: {
+        data: {
+          xdt_api__v1__media__shortcode__web_info: {
+            items: [graphqlItem]
+          }
+        }
+      }
+    })
+
+  const res = await new Ig('https://www.instagram.com/p/DaQElsdj4_8/').getData()
+
+  expect(res).toEqual([
+    expect.objectContaining({
+      width: 1080,
+      height: 1350,
+      url: 'https://cdn.example.com/graphql-image-large.jpg',
+      type: 'Image'
+    })
+  ])
+  expect(axios.get).toHaveBeenCalledTimes(7)
+  expect(axios).toHaveBeenCalledTimes(1)
 })
