@@ -3,8 +3,11 @@ import Ig from '@/core/Ig'
 import { AxiosError } from 'axios'
 import { isValidIgUrl } from '@/lib/utils'
 import { POST_URL_PARAMS } from '@/lib/constant'
+import { ResourceInfo } from '@/types'
 
 const IG_API_TIMEOUT_MS = 18000
+const MEDIA_URL_PARAMS = 'url'
+const FILENAME_PARAMS = 'filename'
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   return Promise.race([
@@ -15,6 +18,23 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
       }, timeoutMs)
     })
   ])
+}
+
+function toDownloadableResources(
+  resources: ResourceInfo[],
+  origin: string
+): ResourceInfo[] {
+  return resources.map((resource) => {
+    const mediaUrl = new URL('/api/media', origin)
+    mediaUrl.searchParams.set(MEDIA_URL_PARAMS, resource.url)
+    mediaUrl.searchParams.set(FILENAME_PARAMS, resource.filename)
+
+    return {
+      ...resource,
+      sourceUrl: resource.url,
+      url: mediaUrl.toString()
+    }
+  })
 }
 
 export async function GET(req: NextRequest) {
@@ -33,9 +53,10 @@ export async function GET(req: NextRequest) {
   try {
     const ig = new Ig(postUrl as string)
     const info = await withTimeout(ig.getData(), IG_API_TIMEOUT_MS)
+    const downloadableInfo = toDownloadableResources(info, req.nextUrl.origin)
     return NextResponse.json(
       {
-        data: info
+        data: downloadableInfo
       },
       { status: 200, headers: jsonHeaders }
     )

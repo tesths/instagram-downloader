@@ -163,6 +163,7 @@ export type ResourceInfo = {
   width: number
   height: number
   url: string
+  sourceUrl?: string
   type: ResourceType
 }
 
