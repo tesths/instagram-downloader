@@ -1,12 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server'
+import Ig from '@/core/Ig'
+import { isValidIgUrl } from '@/lib/utils'
+import { POST_URL_PARAMS } from '@/lib/constant'
+import { ResourceInfo } from '@/types'
 
 const MEDIA_URL_PARAMS = 'url'
 const FILENAME_PARAMS = 'filename'
+const INDEX_PARAMS = 'index'
 const DOWNLOAD_TIMEOUT_MS = 30000
+const IG_API_TIMEOUT_MS = 18000
 const ALLOWED_MEDIA_HOSTS = [
   'cdninstagram.com',
   'fbcdn.net'
 ]
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      setTimeout(() => {
+        reject(new Error('Instagram request timed out. Please try again.'))
+      }, timeoutMs)
+    })
+  ])
+}
 
 function isAllowedMediaUrl(value: string | null): value is string {
   if (!value) return false
@@ -32,6 +49,29 @@ function sanitizeFilename(value: string | null): string {
     .replace(/[/\\?%*:|"<>]/g, '-')
     .replace(/\s+/g, '-')
     .slice(0, 180) || 'instagram-media'
+}
+
+function parseMediaIndex(value: string | null): number | null {
+  if (!value || !/^\d+$/.test(value)) return null
+
+  const index = Number(value)
+  return Number.isSafeInteger(index) ? index : null
+}
+
+async function resolveMediaResource(req: NextRequest): Promise<ResourceInfo | null> {
+  const postUrl = req.nextUrl.searchParams.get(POST_URL_PARAMS)
+  const index = parseMediaIndex(req.nextUrl.searchParams.get(INDEX_PARAMS))
+
+  if (!isValidIgUrl(postUrl) || index === null) {
+    return null
+  }
+
+  const resources = await withTimeout(
+    new Ig(postUrl as string).getData(),
+    IG_API_TIMEOUT_MS
+  )
+
+  return resources[index] ?? null
 }
 
 function buildDownloadHeaders(req: NextRequest): Headers {
@@ -84,20 +124,23 @@ function toResponseHeaders(
 }
 
 export async function GET(req: NextRequest) {
-  const mediaUrl = req.nextUrl.searchParams.get(MEDIA_URL_PARAMS)
-
-  if (!isAllowedMediaUrl(mediaUrl)) {
-    return NextResponse.json(
-      { message: 'Not a valid Instagram media URL.' },
-      { status: 400, headers: { 'Cache-Control': 'no-store, max-age=0' } }
-    )
-  }
-
-  const filename = sanitizeFilename(req.nextUrl.searchParams.get(FILENAME_PARAMS))
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS)
 
   try {
+    const resource = await resolveMediaResource(req)
+    const mediaUrl = resource?.url ?? req.nextUrl.searchParams.get(MEDIA_URL_PARAMS)
+
+    if (!isAllowedMediaUrl(mediaUrl)) {
+      return NextResponse.json(
+        { message: 'Not a valid Instagram media URL.' },
+        { status: 400, headers: { 'Cache-Control': 'no-store, max-age=0' } }
+      )
+    }
+
+    const filename = sanitizeFilename(
+      resource?.filename ?? req.nextUrl.searchParams.get(FILENAME_PARAMS)
+    )
     const upstream = await fetch(mediaUrl, {
       headers: buildDownloadHeaders(req),
       signal: controller.signal

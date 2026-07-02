@@ -6,8 +6,8 @@ import { POST_URL_PARAMS } from '@/lib/constant'
 import { ResourceInfo } from '@/types'
 
 const IG_API_TIMEOUT_MS = 18000
-const MEDIA_URL_PARAMS = 'url'
 const FILENAME_PARAMS = 'filename'
+const INDEX_PARAMS = 'index'
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   return Promise.race([
@@ -22,11 +22,13 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
 
 function toDownloadableResources(
   resources: ResourceInfo[],
-  origin: string
+  origin: string,
+  postUrl: string
 ): ResourceInfo[] {
-  return resources.map((resource) => {
+  return resources.map((resource, index) => {
     const mediaUrl = new URL('/api/media', origin)
-    mediaUrl.searchParams.set(MEDIA_URL_PARAMS, resource.url)
+    mediaUrl.searchParams.set(POST_URL_PARAMS, postUrl)
+    mediaUrl.searchParams.set(INDEX_PARAMS, String(index))
     mediaUrl.searchParams.set(FILENAME_PARAMS, resource.filename)
 
     return {
@@ -50,10 +52,15 @@ export async function GET(req: NextRequest) {
       { status: 400, headers: jsonHeaders }
     )
   }
+  const validPostUrl = postUrl as string
   try {
-    const ig = new Ig(postUrl as string)
+    const ig = new Ig(validPostUrl)
     const info = await withTimeout(ig.getData(), IG_API_TIMEOUT_MS)
-    const downloadableInfo = toDownloadableResources(info, req.nextUrl.origin)
+    const downloadableInfo = toDownloadableResources(
+      info,
+      req.nextUrl.origin,
+      validPostUrl
+    )
     return NextResponse.json(
       {
         data: downloadableInfo
