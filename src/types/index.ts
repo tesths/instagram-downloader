@@ -47,7 +47,7 @@ export type MediaData = {
   has_audio: boolean;
   video_url: string;
   video_view_count: number;
-  video_play_count: number;
+  video_play_count: number | null;
   encoding_status: any;
   is_published: boolean;
   product_type: string;
@@ -164,6 +164,26 @@ export type ResourceInfo = {
   height: number
   url: string
   type: ResourceType
+}
+
+export type InstagramV1Candidate = {
+  url: string
+  width?: number
+  height?: number
+}
+
+export type InstagramV1MediaItem = {
+  id?: string
+  pk?: string
+  code?: string
+  media_type: number
+  original_width?: number
+  original_height?: number
+  image_versions2?: {
+    candidates?: InstagramV1Candidate[]
+  }
+  video_versions?: InstagramV1Candidate[]
+  carousel_media?: InstagramV1MediaItem[]
 }
 
 export type ResponseData = {

@@ -29,13 +29,41 @@ export function toCorsUrl(url: string): string {
   return encodeURI(t)
 }
 
+export function parseIgShortcode(url: string): string {
+  const parsedUrl = new URL(url)
+  const hostname = parsedUrl.hostname.toLowerCase()
+
+  if (
+    hostname !== 'instagram.com' &&
+    hostname !== 'www.instagram.com' &&
+    hostname !== 'm.instagram.com'
+  ) {
+    throw new Error('Invalid Instagram domain')
+  }
+
+  const [mediaType, shortcode] = parsedUrl.pathname.split('/').filter(Boolean)
+
+  if (
+    !['p', 'reel', 'reels', 'tv'].includes(mediaType) ||
+    !/^[a-zA-Z0-9_-]+$/.test(shortcode ?? '')
+  ) {
+    throw new Error('No Shortcode Found in Url!')
+  }
+
+  return shortcode
+}
+
 export function isValidIgUrl(url: any) {
   if (typeof url !== 'string') {
     return false
   }
-  return /^(https?:\/\/)?(www\.)?instagram\.com\/(p|reel|tv)\/[a-zA-Z0-9_\-]+(\/(\?[^#]*)?)?(#.*)?$/.test(
-    url
-  )
+
+  try {
+    parseIgShortcode(url)
+    return true
+  } catch {
+    return false
+  }
 }
 
 /**
