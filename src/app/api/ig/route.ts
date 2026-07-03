@@ -4,9 +4,14 @@ import { AxiosError } from 'axios'
 import { isValidIgUrl } from '@/lib/utils'
 import { POST_URL_PARAMS } from '@/lib/constant'
 import { ResourceInfo } from '@/types'
+import {
+  cacheMediaResource,
+  createMediaCacheId
+} from '@/lib/media-cache'
 
 const IG_API_TIMEOUT_MS = 18000
 const FILENAME_PARAMS = 'filename'
+const ID_PARAMS = 'id'
 const INDEX_PARAMS = 'index'
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
@@ -20,13 +25,20 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   ])
 }
 
-function toDownloadableResources(
+async function toDownloadableResources(
   resources: ResourceInfo[],
   origin: string,
   postUrl: string
-): ResourceInfo[] {
-  return resources.map((resource, index) => {
+): Promise<ResourceInfo[]> {
+  return Promise.all(resources.map(async (resource, index) => {
+    const cacheId = createMediaCacheId()
     const mediaUrl = new URL('/api/media', origin)
+    const isCached = await cacheMediaResource(cacheId, resource)
+
+    if (isCached) {
+      mediaUrl.searchParams.set(ID_PARAMS, cacheId)
+    }
+
     mediaUrl.searchParams.set(POST_URL_PARAMS, postUrl)
     mediaUrl.searchParams.set(INDEX_PARAMS, String(index))
     mediaUrl.searchParams.set(FILENAME_PARAMS, resource.filename)
@@ -39,7 +51,7 @@ function toDownloadableResources(
       expiresAt: getInstagramCdnExpiry(resource.url),
       url: mediaUrl.toString()
     }
-  })
+  }))
 }
 
 function getInstagramCdnExpiry(value: string): string | undefined {
@@ -73,7 +85,7 @@ export async function GET(req: NextRequest) {
   try {
     const ig = new Ig(validPostUrl)
     const info = await withTimeout(ig.getData(), IG_API_TIMEOUT_MS)
-    const downloadableInfo = toDownloadableResources(
+    const downloadableInfo = await toDownloadableResources(
       info,
       req.nextUrl.origin,
       validPostUrl

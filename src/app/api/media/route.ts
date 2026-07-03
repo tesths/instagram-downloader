@@ -3,9 +3,11 @@ import Ig from '@/core/Ig'
 import { isValidIgUrl } from '@/lib/utils'
 import { POST_URL_PARAMS } from '@/lib/constant'
 import { ResourceInfo } from '@/types'
+import { getCachedMediaResource } from '@/lib/media-cache'
 
 const MEDIA_URL_PARAMS = 'url'
 const FILENAME_PARAMS = 'filename'
+const ID_PARAMS = 'id'
 const INDEX_PARAMS = 'index'
 const DOWNLOAD_TIMEOUT_MS = 30000
 const IG_API_TIMEOUT_MS = 18000
@@ -145,7 +147,16 @@ export async function GET(req: NextRequest) {
   try {
     const initialMediaUrl = req.nextUrl.searchParams.get(MEDIA_URL_PARAMS)
     let mediaUrl = initialMediaUrl
+    let filename = sanitizeFilename(req.nextUrl.searchParams.get(FILENAME_PARAMS))
     let resource: ResourceInfo | null = null
+    const cachedResource = await getCachedMediaResource(
+      req.nextUrl.searchParams.get(ID_PARAMS)
+    )
+
+    if (cachedResource) {
+      mediaUrl = cachedResource.sourceUrl
+      filename = sanitizeFilename(cachedResource.filename)
+    }
 
     if (!isAllowedMediaUrl(mediaUrl)) {
       resource = await resolveMediaResource(req)
@@ -159,9 +170,10 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const filename = sanitizeFilename(
-      resource?.filename ?? req.nextUrl.searchParams.get(FILENAME_PARAMS)
-    )
+    if (resource?.filename) {
+      filename = sanitizeFilename(resource.filename)
+    }
+
     let upstream = await fetchMedia(req, mediaUrl, controller.signal)
 
     if (
