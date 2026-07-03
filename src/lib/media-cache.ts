@@ -3,6 +3,7 @@ import { ResourceInfo } from '@/types'
 
 const MEDIA_CACHE_PREFIX = 'ig-media'
 const DEFAULT_MEDIA_CACHE_TTL_SECONDS = 60 * 30
+const DEFAULT_REDIS_TIMEOUT_MS = 1200
 
 type CachedMediaResource = {
   filename: string
@@ -32,8 +33,39 @@ function getCacheTtlSeconds(): number {
     : DEFAULT_MEDIA_CACHE_TTL_SECONDS
 }
 
+function getRedisTimeoutMs(): number {
+  const timeout = Number(process.env.REDIS_TIMEOUT_MS)
+  return Number.isSafeInteger(timeout) && timeout > 0
+    ? timeout
+    : DEFAULT_REDIS_TIMEOUT_MS
+}
+
 function toCacheKey(id: string): string {
   return `${MEDIA_CACHE_PREFIX}:${id}`
+}
+
+function withRedisTimeout<T>(promise: Promise<T>): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      setTimeout(() => {
+        reject(new Error('Redis request timed out'))
+      }, getRedisTimeoutMs())
+    })
+  ])
+}
+
+function isCachedMediaResource(value: unknown): value is CachedMediaResource {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return false
+  }
+
+  const resource = value as Partial<CachedMediaResource>
+  return (
+    typeof resource.filename === 'string' &&
+    typeof resource.sourceUrl === 'string' &&
+    (resource.type === 'Image' || resource.type === 'Video')
+  )
 }
 
 export function createMediaCacheId(): string {
@@ -54,9 +86,11 @@ export async function cacheMediaResource(
   }
 
   try {
-    await redis.set(toCacheKey(id), cachedResource, {
-      ex: getCacheTtlSeconds()
-    })
+    await withRedisTimeout(
+      redis.set(toCacheKey(id), cachedResource, {
+        ex: getCacheTtlSeconds()
+      })
+    )
 
     return true
   } catch {
@@ -73,7 +107,11 @@ export async function getCachedMediaResource(
   if (!redis) return null
 
   try {
-    return await redis.get<CachedMediaResource>(toCacheKey(id))
+    const cachedResource = await withRedisTimeout(
+      redis.get<unknown>(toCacheKey(id))
+    )
+
+    return isCachedMediaResource(cachedResource) ? cachedResource : null
   } catch {
     return null
   }

@@ -20,10 +20,13 @@ re-parsing Instagram for every media item:
 UPSTASH_REDIS_REST_URL=your-upstash-rest-url
 UPSTASH_REDIS_REST_TOKEN=your-upstash-rest-token
 MEDIA_CACHE_TTL_SECONDS=1800
+REDIS_TIMEOUT_MS=1200
 ```
 
-`MEDIA_CACHE_TTL_SECONDS` is optional and defaults to 30 minutes. If Redis is
-not configured or a cache entry expires, download URLs fall back to resolving by
+`MEDIA_CACHE_TTL_SECONDS` is optional and defaults to 30 minutes.
+`REDIS_TIMEOUT_MS` is optional and defaults to 1200ms. Download URLs include a
+Redis `id` plus `postUrl` and `index`; Redis hits avoid re-parsing Instagram,
+while Redis misses, timeouts, or expired cache entries fall back to resolving by
 `postUrl` and `index`.
 
 ## Features
