@@ -6,7 +6,6 @@ import { POST_URL_PARAMS } from '@/lib/constant'
 import { ResourceInfo } from '@/types'
 
 const IG_API_TIMEOUT_MS = 18000
-const MEDIA_URL_PARAMS = 'url'
 const FILENAME_PARAMS = 'filename'
 const INDEX_PARAMS = 'index'
 
@@ -28,7 +27,6 @@ function toDownloadableResources(
 ): ResourceInfo[] {
   return resources.map((resource, index) => {
     const mediaUrl = new URL('/api/media', origin)
-    mediaUrl.searchParams.set(MEDIA_URL_PARAMS, resource.url)
     mediaUrl.searchParams.set(POST_URL_PARAMS, postUrl)
     mediaUrl.searchParams.set(INDEX_PARAMS, String(index))
     mediaUrl.searchParams.set(FILENAME_PARAMS, resource.filename)
